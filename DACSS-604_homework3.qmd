@@ -1,0 +1,285 @@
+---
+title: "DACSS-603: Final Project"
+author: "Michele Carlin"
+format: 
+  html: 
+    embed-resources: true
+    self-contained-math: true
+---
+
+# Research Question
+Much research has been done in the area of substance abuse treatment and the factors that may or may not predict successful completion of the treatment plan.  Many factors, such as gender, sex, race/ethnicity, employment and various other factors have shown to be effective in predicting success. In this study, however, I will investigate whether one type of referral (self/family referral, healthcare provider, school, employer, etc.) predicts success better than others. Does self/family referral indicate that a person has accepted they have an addiction problem and therefore is more committed to the treatment vs. if a healthcare provider or an employer suggests treatment? Success in this study will be determined by the reason for discharge (1=completion of treatment, 0=all other reasons for discharge (e.g., left against professional advice, terminated by facility, incarcerated, and death)).
+
+# Hypothesis
+The null hypothesis states there is no statistically significant relationship between completion success and source of referral when controlling for gender, marital status, and employment status at time of admission.
+
+The alternative hypothesis states that source of referral has a statistically significant relationship with completion success.
+
+# Descriptive Statistics
+The Substance Abuse and Mental Health Services Administration (SAMHSA) is an agency within the U.S. Department of Health and Human Services that leads public health efforts to advance the behavioral health of the nation. SAMHSA collects national data on an annual basis regarding admissions and discharges from substance abuse treatment facilities. Individual substance abuse facilities report out on the number of admissions/discharges they had within the prior year, as well as various pieces of information on each patient, to their state substance abuse agency, who then submits annual data to SAMHSA. For this project, I will be using the 2020 Treatment Episode Data Set on Discharges (TEDS-D).
+
+# Read in file
+```{r, echo=T}
+library(readr)
+teds <- read_csv("tedsd_puf_2020.csv")
+head(teds)
+```
+# Dataframe details
+This dataframe contains information on 1,391,393 discharges that occurred in 2020. Each row contains a unique case ID for each discharge, followed by 74 different variables. A portion of these variables (approximately 19) were required fields, while the remaining were supplemental and therefore may contain a significant amount of missing data.  
+
+# Created new dataframe with only selected variables
+For my project, I will be focusing on the following variables:
+GENDER: this field contains biological sex (1=male, 2=female, -9=missing/unknown/not collected/invalid).
+
+MARSTAT: Marital status (1=never married, 2=now married, 3=separated, 4=divorced or widowed, -9=missing/unknown/not collected/invalid)
+
+EMPLOY: Employment status at time of admission (1=full-time, 2=part-time, 3=unemployed, 4=not in labor force, -9=missing/unknown/not collected/invalid)
+
+PSOURCE: Referral source (1=individual/family member, 2=alcohol/drug use care provider, 3=other health care provider, 4=school, 5=employer, 6=other community referral, 7=court/criminal justice referral, -9=missing/unknown/not collected/invalid)
+
+REASON: Reason for discharge (1=treatment completed, 2=dropped out of treatment, 3=terminated by facility, 4=transferred to another facility, 5=incarcerated, 6=death, 7=other)
+
+# Create new dataframe with fewer variables
+```{r}
+library(tidyverse)
+teds1 <-  select(teds, "CASEID", "GENDER", "MARSTAT", "EMPLOY", "REASON", "PSOURCE")
+str(teds1)
+```
+# EXPLORATORY DATA ANALYSIS
+
+# All missing/unknown/not collected/invalid datapoints are coded as -9, therefore I am going to replace all -9's with NA
+
+```{r}
+teds1$GENDER[teds1$GENDER == -9] <- NA
+teds1$MARSTAT[teds1$MARSTAT == -9] <- NA
+teds1$EMPLOY[teds1$EMPLOY == -9] <- NA
+teds1$REASON[teds1$REASON == -9] <- NA
+teds1$PSOURCE[teds1$PSOURCE == -9] <- NA
+str(teds1)
+```
+# Run counts/percents for each variable to see what percent of each variable is missing
+```{r}
+library(janitor)
+tabyl(teds1$GENDER, sort = TRUE)
+tabyl(teds1$MARSTAT, sort = TRUE)
+tabyl(teds1$EMPLOY, sort = TRUE)
+tabyl(teds1$REASON, sort = TRUE)
+tabyl(teds1$PSOURCE, sort = TRUE)
+
+```
+Even though 10-20% of some variables (e.g., MARSTAT, EMPLOY, PSOURCE) is missing data, I don't see any patterns in the missing data, and because there are over 1 million rows of data, I am not going to worry about missing data being dropped from the regression model.
+
+# Run the following to remove all rows with one or more missing values
+```{r}
+teds2 <- na.omit(teds1)
+str(teds2)
+```
+
+# Recodes 
+Create new SUCCESS variable to recode REASON into a binary variable (1=treatment completed, 0=treatment not completed).
+Create new REFERRAL variable to lump a few of the PSOURCE options together.
+```{r}
+teds2<-teds2%>%
+  mutate(SUCCESS = case_when(
+         REASON == 1 ~ 1,
+         REASON >= 2 ~ 0))
+tabyl(teds2$REASON, sort = TRUE)
+tabyl(teds2$SUCCESS, sort = TRUE)
+
+teds2<-teds2%>%
+  mutate(REFERRAL = case_when(
+         PSOURCE == 1 ~ 1,
+         PSOURCE == 2 ~ 2,
+         PSOURCE == 3 ~ 2,
+         PSOURCE == 4 ~ 3,
+         PSOURCE == 5 ~ 3,
+         PSOURCE == 6 ~ 4,
+         PSOURCE == 7 ~ 5))
+tabyl(teds2$PSOURCE, sort = TRUE)
+tabyl(teds2$REFERRAL, sort = TRUE)
+```
+#Crosstabs of DV with each IV
+```{r}
+xtabs(~SUCCESS + GENDER, data = teds2)
+xtabs(~SUCCESS + MARSTAT, data = teds2)
+xtabs(~SUCCESS + EMPLOY, data = teds2)
+xtabs(~SUCCESS + REFERRAL, data = teds2)
+```
+# Reformat variables to be factors
+```{r}
+teds2$SUCCESS <- factor(teds2$SUCCESS)
+teds2$GENDER <- factor(teds2$GENDER)
+teds2$MARSTAT <- factor(teds2$MARSTAT)
+teds2$EMPLOY <- factor(teds2$EMPLOY)
+teds2$REFERRAL <- factor(teds2$REFERRAL)
+str(teds2)
+```
+# Visualizations
+```{r}
+ggplot(teds2, aes(x = SUCCESS, fill = GENDER)) +
+  geom_bar(position = "dodge") +
+  labs(title = "Treatment Success by Gender", y = "Frequency", x = "Success") +
+  theme(plot.title = element_text(hjust=0.5)) +
+  scale_fill_discrete(labels=c('Male', 'Female')) +
+  scale_x_discrete(labels=c('Did Not Complete Treatment', 'Completed Treatment')) +
+  guides(fill = guide_legend(title = "Gender:")) 
+
+ggplot(teds2, aes(x = SUCCESS, fill = MARSTAT)) +
+  geom_bar(position = "dodge") +
+  labs(title = "Treatment Success by Martial Status", y = "Frequency", x = "Success") +
+  theme(plot.title = element_text(hjust=0.5)) +
+  scale_fill_discrete(labels=c('Never Married', 'Now Married', 'Separated', 'Divorced/Widowed', 'NA')) +
+  scale_x_discrete(labels=c('Did Not Complete Treatment', 'Completed Treatment')) +
+  guides(fill = guide_legend(title = "Marital Status:")) 
+
+ggplot(teds2, aes(x = SUCCESS, fill = EMPLOY)) +
+  geom_bar(position = "dodge") +
+  labs(title = "Treatment Success by Employment Status at time of Admission", y = "Frequency", x = "Success") +
+  theme(plot.title = element_text(hjust=0.5)) +
+  scale_fill_discrete(labels=c('Full-Time', 'Part-Time', 'Unemployed', 'Not in Labor Force', 'NA')) +
+  scale_x_discrete(labels=c('Did Not Complete Treatment', 'Completed Treatment')) +
+  guides(fill = guide_legend(title = "Employment Status:")) 
+
+ggplot(teds2, aes(x = SUCCESS, fill = REFERRAL)) +
+  geom_bar(position = "dodge") +
+  labs(title = "Treatment Success by Source of Referral", y = "Frequency", x = "Success") +
+  theme(plot.title = element_text(hjust=0.5)) +
+  scale_fill_discrete(labels=c('Individual/Family Member', 'Healthcare Provider', 'School/Employer', 'Other Community Referral', 'Court/Criminal Justice System', 'NA')) +
+  scale_x_discrete(labels=c('Did Not Complete Treatment', 'Completed Treatment')) +
+  guides(fill = guide_legend(title = "Source of Referral:")) 
+```
+# Binary Logistic Regression assumptions.
+1. The observations must be independent.
+      Each observation is a different patient, therefore they are all independent of each other.
+2. There must be no perfect multicollinearity among independent variables.
+      I used the vif function after running the regression model to look for multicollinearity; no             perfect multicollinearity was found.
+3. Continuous predictors are linearly related to a transformed version of the outcome (linearity).
+      I do not have any continuous predictors, therefore this is not applicable to my project.
+
+# Hypothesis Testing
+Response variable = SUCCESS
+Explanatory variable = REFERRAL
+Control variables = GENDER, MARSTAT, EMPLOY
+
+# Binomial Logistic Regression model - including explanatory variable and all three confounders
+# I added the Variance Inflation Factor (vif) function to the first model to look for multicollinearity among the IVs. All values are <2 indicating no multicollinearity concerns.
+```{r}
+blr1 <-glm(SUCCESS~REFERRAL+GENDER+MARSTAT+EMPLOY, family=binomial(link = "logit"),data=teds2) 
+summary(blr1)
+library(car)
+vif(blr1)
+```
+All predictors are statistically significant in predicting success (completion of treatment) but individual referral does not predict success more than any other type of referral, in fact it has the lowest odds of success among all types of referral (see below). 
+
+# Convert coefficients (logits/log odds) to odds ratios by exponentiating the coefficients 
+```{r}
+exp(coef(blr1))
+```
+# Interpretation of odds ratios
+People referred by a healthcare provider have 1.33 higher odds of success (completing their treatment program) than those referred by themselves or a family member, keeping other variables constant. In fact all types of referrals have higher odds of success than those referred by themselves or a family member (school/employer: 1.9; other community referral: 1.36; court/criminal justice: 1.56).
+
+Females have .23 lower odds of successfully completing their treatment program than males.
+
+Those that are married and those that were divorced/widowed have higher odds of success (1.1 and 1.06, respectively) than those that have never been married. While those that were separated had .86 lower odds of success than those that have never been married.
+
+Those that had a part-time job, were unemployed, or not in the labor force had lower odds of success (.7, .58, .91, respectively) than those that had a full-time job at the time of admission.
+
+
+```{r}
+library(ggplot2)
+library(dplyr)
+library(tidyr) 
+library(gganimate)
+```
+
+
+## Example 2: Hypothetical Outcome Plot: regression results
+
+# Create new data for hypothetical outcomes
+
+```{r}
+
+teds3 <- expand.grid(
+  REFERRAL = 1:5,
+  MARSTAT = 1:4,
+  EMPLOY = 1:4,
+  GENDER = 1:2
+)
+teds3
+
+
+teds3$GENDER <- factor(teds3$GENDER)
+teds3$MARSTAT <- factor(teds3$MARSTAT)
+teds3$EMPLOY <- factor(teds3$EMPLOY)
+teds3$REFERRAL <- factor(teds3$REFERRAL)
+str(teds3)
+```
+
+# Generate predictions with intervals
+```{r}
+predictions <- predict(blr1, newdata = teds3, interval = "prediction", level = 0.95)
+```
+## I tried multiple things below but none of them work
+# Combine predictions with new data
+
+hypothetical_data <- teds3 |>
+  mutate(predicted_success = predictions[, "fit"],
+         lower_bound = predictions[, "lwr"],
+         upper_bound = predictions[, "upr"])
+
+
+# Create the animated plot...still need to update the code below once I get the above code to run.
+
+animated_plot <- ggplot(hypothetical_data, aes(x = size, y = predicted_price, group = rooms, color = as.factor(rooms))) +
+  geom_line(size = 1) +
+  geom_ribbon(aes(ymin = lower_bound, ymax = upper_bound, fill = as.factor(rooms)), alpha = 0.2) +
+  labs(title = 'Hypothetical Outcome Plot: Housing Price vs. Size (Urban)',
+       subtitle = 'Number of Rooms: {closest_state}',
+       x = 'Size (sq ft)',
+       y = 'Predicted Price ($)',
+       color = 'Number of Rooms',
+       fill = 'Number of Rooms') +
+  theme_minimal() +
+  transition_states(rooms, transition_length = 2, state_length = 1) +
+  ease_aes('linear')
+
+
+# Render the animation
+
+animate(animated_plot, nframes = 100, fps = 10)
+
+# Tried the following that I found online
+set.seed(016752277)
+
+teds4 <- data.frame(SUCCESS = sample(unique(teds2$SUCCESS), 2000, TRUE),
+                    REFERRAL = sample(unique(teds2$REFERRAL), 2000, TRUE),
+                    EMPLOY   = sample(unique(teds2$EMPLOY), 2000, TRUE),
+                    MARSTAT   = sample(unique(teds2$MARSTAT), 2000, TRUE),
+                    GENDER   = sample(unique(teds2$GENDER), 2000, TRUE))
+View(teds4)
+
+predictions    <- predict(blr1, newdata = teds4, type = "response")
+hypothetical_data <- teds4 |>
+  mutate(predicted_success = predictions[, "fit"],
+         lower_bound = predictions[, "lwr"],
+         upper_bound = predictions[, "upr"])
+
+
+## Also tried your 1st Example: Hypothetical Outcome Plot: descriptive statistics
+
+teds2
+teds5 = teds2 %>% group_by(REFERRAL, .drop = FALSE) %>% count()
+teds5
+
+
+set.seed(01002)  # For reproducibility
+n_simulations <- 1000  # Number of hypothetical outcomes
+
+# Create a data frame with simulated outcomes for each Type
+simulated_data <- teds5 |>
+  rowwise() |>
+  do(data.frame(REFERRAL = .$REFERRAL,
+                outcome = rnorm(n_simulations, n = .$n),
+                sim_id = 1:n_simulations))
+
+
